@@ -224,7 +224,7 @@ col_title, col_logout = st.columns([5, 1])
 with col_title:
     st.title("🏭 FCPL Industrial Shift Optimizer")
 with col_logout:
-    if st.button("🔴 Logout"):
+    if st.button("🔴 Logout", key="unique_logout_button"):
         st.session_state.authorized = False
         st.rerun()
 
