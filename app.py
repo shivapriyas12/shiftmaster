@@ -57,7 +57,7 @@ with col_logout:
 
 # Added unique key to prevent duplicate ID error
 week_start = st.date_input("Select Week Start Date", datetime.now(), key="main_date_picker")
-tabs = st.tabs(["📝 Incharge Entry", "📅 Shift Schedule", "🔒 HR Config"])
+tabs = st.tabs(["📝 Incharge Entry", "📅 Shift Schedule", "🔒 HR CONFIGURATION"])
 
 # --- TAB 1: INCHARGE ENTRY ---
 with tabs[0]:
@@ -103,7 +103,7 @@ with tabs[1]:
     if not st.session_state.employees:
         st.info("No employee data found. Please register staff in the first tab.")
     else:
-        if st.button("🚀 GENERATE MASTER SCHEDULE", key="gen_schedule_btn"):
+        if st.button("🚀 GENERATE SHIFT SCHEDULE", key="gen_schedule_btn"):
             dates = [(week_start + timedelta(days=i)).strftime("%d-%b (%a)") for i in range(7)]
             
             for i, emp in enumerate(st.session_state.employees):
