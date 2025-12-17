@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import io
 
 # --- 1. PAGE CONFIGURATION ---
-st.set_page_config(page_title="FCPL Shift Optimizer", layout="wide")
+st.set_page_config(page_title="FCPL ShiftMaster", layout="wide")
 
 # --- 2. SECURITY CREDENTIALS ---
 MASTER_USER = "admin"
@@ -48,7 +48,7 @@ if not st.session_state.authorized:
 # --- 5. MAIN APPLICATION UI ---
 col_title, col_logout = st.columns([5, 1])
 with col_title:
-    st.title("🏭 FCPL Industrial Shift Optimizer")
+    st.title("👷🏽🏭 FCPL Shift Schedule Maker")
 with col_logout:
     # Added unique key to prevent duplicate ID error
     if st.button("🔴 Logout", key="main_logout_btn"):
