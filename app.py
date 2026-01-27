@@ -50,114 +50,183 @@ col_title, col_logout = st.columns([5, 1])
 with col_title:
     st.title("👷🏽🏭 FCPL Shift Schedule Maker")
 with col_logout:
-    # Added unique key to prevent duplicate ID error
-    if st.button("🔴 Logout", key="main_logout_btn"):
+    if st.button("🔴 Logout"):
         st.session_state.authorized = False
         st.rerun()
 
-# Added unique key to prevent duplicate ID error
-week_start = st.date_input("Select Week Start Date", datetime.now(), key="main_date_picker")
+week_start = st.date_input("Select Week Start Date", datetime.now())
 tabs = st.tabs(["📝 Incharge Entry", "📅 Shift Schedule", "🔒 HR CONFIGURATION"])
 
-# --- TAB 1: INCHARGE ENTRY ---
+# ------------------------------------------------------------------
+# -------------------- TAB 1: INCHARGE ENTRY ------------------------
+# ------------------------------------------------------------------
 with tabs[0]:
-    st.subheader("Employee Registration")
+    st.subheader("📤 Bulk Upload Employees (Excel)")
+
+    uploaded_file = st.file_uploader(
+        "Upload Employee Excel File",
+        type=["xlsx", "xls"],
+        help="Columns required: ID, Name, SPP, Gender, Sec, Desig, Willing"
+    )
+
+    if uploaded_file is not None:
+        try:
+            df_upload = pd.read_excel(uploaded_file)
+            required_cols = {"ID", "Name", "SPP", "Gender", "Sec", "Desig", "Willing"}
+
+            if not required_cols.issubset(df_upload.columns):
+                st.error(f"Excel must contain columns: {required_cols}")
+            else:
+                existing_ids = {e["ID"] for e in st.session_state.employees}
+                added = 0
+
+                for _, row in df_upload.iterrows():
+                    willing = [s.strip() for s in str(row["Willing"]).split(",") if s.strip() in ["A", "B", "C"]]
+
+                    if pd.isna(row["ID"]) or not willing or str(row["ID"]) in existing_ids:
+                        continue
+
+                    st.session_state.employees.append({
+                        "ID": str(row["ID"]),
+                        "Name": row["Name"],
+                        "SPP": row["SPP"],
+                        "Gender": row["Gender"],
+                        "Sec": row["Sec"],
+                        "Desig": row["Desig"],
+                        "Willing": willing,
+                        "Schedule": {}
+                    })
+                    added += 1
+
+                st.success(f"✅ Successfully uploaded {added} employees")
+
+        except Exception as e:
+            st.error(f"Error reading Excel: {e}")
+
+    # ---- Manual Entry (Backup / Exception Handling) ----
+    st.divider()
+    st.subheader("➕ Manual Employee Entry")
+
     with st.form("entry_form", clear_on_submit=True):
         c1, c2, c3 = st.columns(3)
         spp = c1.text_input("SPP NAME")
         eid = c2.text_input("EMP ID")
         ename = c3.text_input("EMP NAME")
-        
+
         c4, c5, c6 = st.columns(3)
         gender = c4.selectbox("GENDER", ["F", "M", "Not Defined"])
         section = c5.selectbox("SECTION", list(st.session_state.line_rules.keys()))
         desig = c6.text_input("DESIGNATION")
-        
+
         st.write("Willing Shifts")
         sc = st.columns(3)
         wa = sc[0].checkbox("Shift A")
         wb = sc[1].checkbox("Shift B")
         wc = sc[2].checkbox("Shift C")
-        
+
         if st.form_submit_button("Add Employee"):
             willing = [s for s, b in zip(["A", "B", "C"], [wa, wb, wc]) if b]
             if eid and willing:
                 st.session_state.employees.append({
-                    "ID": eid, "Name": ename, "SPP": spp, "Gender": gender, 
-                    "Sec": section, "Desig": desig, "Willing": willing, "Schedule": {}
+                    "ID": eid,
+                    "Name": ename,
+                    "SPP": spp,
+                    "Gender": gender,
+                    "Sec": section,
+                    "Desig": desig,
+                    "Willing": willing,
+                    "Schedule": {}
                 })
                 st.success(f"Added: {ename}")
             else:
-                st.error("Missing Data: ID and Shift preferences are required.")
+                st.error("EMP ID and at least one shift required")
 
     if st.session_state.employees:
         st.write("### Current Staff List")
         df_reg = pd.DataFrame(st.session_state.employees)[["ID", "Name", "Sec", "Willing"]]
         st.dataframe(df_reg, use_container_width=True)
-        if st.button("🗑️ Clear All Data", key="clear_data_btn"):
+
+        if st.button("🗑️ Clear All Data"):
             st.session_state.employees = []
             st.rerun()
 
-# --- TAB 2: SCHEDULE GENERATION ---
+# ------------------------------------------------------------------
+# -------------------- TAB 2: SCHEDULE ------------------------------
+# ------------------------------------------------------------------
 with tabs[1]:
     if not st.session_state.employees:
-        st.info("No employee data found. Please register staff in the first tab.")
+        st.info("No employee data found.")
     else:
-        if st.button("🚀 GENERATE SHIFT SCHEDULE", key="gen_schedule_btn"):
+        if st.button("🚀 GENERATE SHIFT SCHEDULE"):
             dates = [(week_start + timedelta(days=i)).strftime("%d-%b (%a)") for i in range(7)]
-            
+
             for i, emp in enumerate(st.session_state.employees):
                 emp["Schedule"] = {d: "" for d in dates}
                 emp["Schedule"][dates[i % 7]] = "W/O"
 
-            for sec_name, rules in st.session_state.line_rules.items():
-                sec_staff = [e for e in st.session_state.employees if e["Sec"] == sec_name]
-                if not sec_staff: continue
+            for sec, rules in st.session_state.line_rules.items():
+                staff = [e for e in st.session_state.employees if e["Sec"] == sec]
+                if not staff:
+                    continue
 
                 for idx, day in enumerate(dates):
                     is_sun = "Sun" in day
-                    target = rules[4]//3 if is_sun else rules[0] + (rules[3]//3)
-                    
-                    pool = [e for e in sec_staff if e["Schedule"][day] != "W/O"]
+                    target = rules[4] // 3 if is_sun else rules[0] + (rules[3] // 3)
+                    pool = [e for e in staff if e["Schedule"][day] != "W/O"]
                     random.shuffle(pool)
 
                     for shift in ["A", "B", "C"]:
                         count = 0
                         for e in pool[:]:
-                            if count >= target: break
-                            if shift == "A" and idx > 0 and e["Schedule"][dates[idx-1]] == "C": continue
+                            if count >= target:
+                                break
+                            if shift == "A" and idx > 0 and e["Schedule"][dates[idx - 1]] == "C":
+                                continue
                             if shift in e["Willing"]:
                                 e["Schedule"][day] = shift
                                 pool.remove(e)
                                 count += 1
-                    for e in pool:
-                        for s in e["Willing"]: e["Schedule"][day] = s; break
 
-            res_list = []
-            for e in sorted(st.session_state.employees, key=lambda x: x['Sec']):
+                    for e in pool:
+                        e["Schedule"][day] = e["Willing"][0]
+
+            result = []
+            for e in st.session_state.employees:
                 row = {"Section": e["Sec"], "ID": e["ID"], "Name": e["Name"]}
                 row.update(e["Schedule"])
-                res_list.append(row)
-            
-            df_final = pd.DataFrame(res_list)
+                result.append(row)
+
+            df_final = pd.DataFrame(result)
             st.dataframe(df_final, use_container_width=True)
 
             output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
                 df_final.to_excel(writer, index=False)
-            st.download_button("📥 Download Excel Report", output.getvalue(), f"Shift_Report_{week_start}.xlsx", key="dl_btn")
 
-# --- TAB 3: HR CONFIGURATION ---
+            st.download_button(
+                "📥 Download Excel Report",
+                output.getvalue(),
+                f"Shift_Report_{week_start}.xlsx"
+            )
+
+# ------------------------------------------------------------------
+# -------------------- TAB 3: HR CONFIG -----------------------------
+# ------------------------------------------------------------------
 with tabs[2]:
     st.subheader("Requirement Rules Management")
-    hr_p = st.text_input("Enter HR Password to unlock", type="password", key="hr_pass_input")
+    hr_p = st.text_input("Enter HR Password", type="password")
+
     if hr_p == HR_PASS:
         st.success("Access Granted")
-        rules_df = pd.DataFrame.from_dict(st.session_state.line_rules, orient='index', 
-                                          columns=["A", "B", "C", "AB Cover", "Sunday"])
-        edited_df = st.data_editor(rules_df, key="rules_editor")
-        if st.button("Save Changes", key="save_rules_btn"):
-            st.session_state.line_rules = edited_df.to_dict('list')
-            st.success("System Rules Updated!")
-    elif hr_p != "":
-        st.error("Incorrect HR Password")
+        rules_df = pd.DataFrame.from_dict(
+            st.session_state.line_rules,
+            orient="index",
+            columns=["A", "B", "C", "AB Cover", "Sunday"]
+        )
+        edited_df = st.data_editor(rules_df)
+
+        if st.button("Save Changes"):
+            st.session_state.line_rules = edited_df.to_dict("list")
+            st.success("Rules Updated")
+    elif hr_p:
+        st.error("Incorrect Password")
